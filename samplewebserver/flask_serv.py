@@ -3,7 +3,6 @@ import datetime,cgi,os,cgitb,sys,time, logging
 
 app = Flask(__name__)
 cgitb.enable()
-sys.path.insert(0,"/usr/bin/espeak")
 
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
