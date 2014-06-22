@@ -1,0 +1,7 @@
+linkID,from_node,to_node,tt
+1,A,B,2
+2,A,C,2
+3,B,D,2
+4,D,F,2
+5,C,E,2
+6,E,F,2
