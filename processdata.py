@@ -359,36 +359,6 @@ if __name__ == "__main__":
 
 	turntest = discover_turns(step_out)
 
-	print turntest['turn_count']
-
-	if turntest['turn_count'] != 1:
-
-		#BURASI SADECE YEDEK DATA
-		if speed == 'high':
-			#HIZLI SAG
-			filename = 'accel:raw:0622:081010'
-			csv_nam = 'hizli_sag'
-
-		else:
-			#YAVAS SOL
-			filename = 'accel:raw:0622:082020'
-			csv_nam = 'yavas_sol'
-
-		test = create_base_for_processing(r,filename)
-
-		processed_data = downsample(raw_data = test, csv_fname = filename)
-
-		returned = sub_avg(processed_data)
-
-		x_stat = returned[0]
-		z_stat = returned[1]
-
-		ds_avg_data = returned[2]
-
-		step_out = step_fnc(ds_avg_dataset=  ds_avg_data, x_stats=  x_stat, z_stats= z_stat, stddev_w = 1.5)
-
-		turntest = discover_turns(step_out)
-
 	tt = linkdata(turntest)
 
 	#START NEO TEST
@@ -418,14 +388,12 @@ if __name__ == "__main__":
 
 	#SHORTEST PATH
 
-	payload ="""{"to" : "http://localhost:7474/db/data/node/5", "cost_property" : "tt", "relationships" : {"type" : "CONNECTS_TO","direction" : "out"},"algorithm" : "dijkstra"}"""
+	payload ="""{"to" : "http://localhost:7474/db/data/node/<START>", "cost_property" : "tt", "relationships" : {"type" : "CONNECTS_TO","direction" : "out"},"algorithm" : "dijkstra"}"""
 
-	reply = requests.post('http://138.91.93.45:7474/db/data/node/0/paths', data = payload)
+	reply = requests.post('http://localhost:7474/db/data/node/0/paths', data = payload)
 	
 	
-	#print reply.json()[0]['nodes'][1].split("/")[6]
-
-	#GRAPPHHH
+	#GRAPH
 
 	G=nx.Graph()
 	pos = {0:(0,0),
