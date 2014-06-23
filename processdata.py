@@ -19,9 +19,13 @@ logger.setLevel(logging.INFO)
 matplotlib.use('Agg')
 
 
+# Connections
+
 redis = StrictRedis(host='localhost', port='6379', db=0)
 neo = neo4j.GraphDatabaseService("http://138.91.93.45:7474/db/data/")
 
+
+# Points
 
 Point = namedtuple('Point', 'x y z ts')
 
@@ -38,6 +42,8 @@ def store_point(key, point):
         'ts': point.ts
     })
 
+
+# Pending
 
 def get_sample_length(csv_fname):
     """
