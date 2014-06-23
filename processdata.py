@@ -13,6 +13,10 @@ import requests
 matplotlib.use('Agg')
 
 
+redisconn = redis.StrictRedis(host='localhost', port='6379', db=0)
+neoconn = neo4j.GraphDatabaseService("http://138.91.93.45:7474/db/data/")
+
+
 class accel_datapoint:
     """docstring for raw_datapoint"""
     def __init__(self, keyname, timestamp=0, accelX=0, accelY=0, accelZ=0):
@@ -358,13 +362,10 @@ def linkdata(turndata):
 
 
 if __name__ == "__main__":
-    r = redis.StrictRedis(host='localhost', port='6379', db=0)
-    graph_db = neo4j.GraphDatabaseService("http://138.91.93.45:7474/db/data/")
-
     speed = 'high'
     filename = 'accel:raw:0622:144729'
 
-    test = create_base_for_processing(r, filename)
+    test = create_base_for_processing(redisconn, filename)
 
     processed_data = downsample(raw_data=test, csv_fname=filename)
 
@@ -386,26 +387,26 @@ if __name__ == "__main__":
     # STATIC PATH NODES A-C-E-F
     # DYNAMIC PATH NODES A-B-D-F
 
-    for i in graph_db.find("ROADNODE", property_key="nID", property_value="A"):
+    for i in neoconn.find("ROADNODE", property_key="nID", property_value="A"):
         nod_a = i
-    for i in graph_db.find("ROADNODE", property_key="nID", property_value="B"):
+    for i in neoconn.find("ROADNODE", property_key="nID", property_value="B"):
         nod_b = i
-    for i in graph_db.find("ROADNODE", property_key="nID", property_value="C"):
+    for i in neoconn.find("ROADNODE", property_key="nID", property_value="C"):
         nod_c = i
-    for i in graph_db.find("ROADNODE", property_key="nID", property_value="D"):
+    for i in neoconn.find("ROADNODE", property_key="nID", property_value="D"):
         nod_d = i
-    for i in graph_db.find("ROADNODE", property_key="nID", property_value="E"):
+    for i in neoconn.find("ROADNODE", property_key="nID", property_value="E"):
         nod_e = i
-    for i in graph_db.find("ROADNODE", property_key="nID", property_value="F"):
+    for i in neoconn.find("ROADNODE", property_key="nID", property_value="F"):
         nod_f = i
 
-    link_ab = graph_db.match_one(start_node=nod_a, end_node=nod_b)
-    link_bd = graph_db.match_one(start_node=nod_b, end_node=nod_d)
-    link_df = graph_db.match_one(start_node=nod_d, end_node=nod_f)
+    link_ab = neoconn.match_one(start_node=nod_a, end_node=nod_b)
+    link_bd = neoconn.match_one(start_node=nod_b, end_node=nod_d)
+    link_df = neoconn.match_one(start_node=nod_d, end_node=nod_f)
 
-    link_ac = graph_db.match_one(start_node=nod_a, end_node=nod_c)
-    link_ce = graph_db.match_one(start_node=nod_c, end_node=nod_e)
-    link_ef = graph_db.match_one(start_node=nod_e, end_node=nod_f)
+    link_ac = neoconn.match_one(start_node=nod_a, end_node=nod_c)
+    link_ce = neoconn.match_one(start_node=nod_c, end_node=nod_e)
+    link_ef = neoconn.match_one(start_node=nod_e, end_node=nod_f)
 
     link_bd["tt"] = tt[0]
     link_df["tt"] = tt[1]
