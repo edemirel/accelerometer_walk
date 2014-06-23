@@ -1,17 +1,11 @@
 # coding: utf-8
 import datetime
-import cgi
-import os
-import cgitb
-import sys
-import time
 import logging
 
-from flask import Flask, render_template, request
+from flask import Flask, render_template
 
 
 app = Flask(__name__)
-cgitb.enable()
 
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
