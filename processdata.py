@@ -26,6 +26,16 @@ redis = StrictRedis(host='localhost', port='6379', db=0)
 neo = neo4j.GraphDatabaseService("http://138.91.93.45:7474/db/data/")
 
 
+# Helpers
+
+def chunked(l, n):
+    """ Yield successive n-sized chunks from l.
+    """
+    for i in xrange(0, len(l), n):
+        if i + n <= len(l):
+            yield l[i:i + n]
+
+
 # Points
 
 WEIGHTS_THREE = [0.75, 1.5, 0.75]
@@ -51,19 +61,16 @@ def store_point(key, point):
     })
 
 
-def allavg(points):
-    return (avg('x', points), avg('y', points), avg('z', points))
+def wavg(dimension, weights, points):
+    if len(weights) != len(points):
+        raise ValueError("Weights must be the same length as points")
+    values = [getattr(p, dimension) for p in points]
+    weighted = [w * v for w, v in zip(weights, values)]
+    return float(sum(weighted)) / float(len(weighted))
 
 
 def avg(dimension, points):
-    values = [getattr(p, dimension) for p in points]
-    return float(sum(values)) / float(len(values))
-
-
-def weighted_avg(dimension, weights, points):
-    values = [getattr(p, dimension) for p in points]
-    weighted = [w * v for w, v in zip(weights, values)]
-    return float(sum(weighted)) / float(len(values))
+    return wavg(dimension, [1] * len(points), points)
 
 
 # Pending
@@ -126,12 +133,15 @@ def get_set_stat(data):
     return out
 
 
-def downsample(raw_data, downsamplesize=5, avg_method='mean', csv_fname=None):
+def downsample(raw_data, averager, downsamplesize=5, csv_fname=None):
     """
     downsamples the data with the given average method
 
     avg_method can be mean, weight or weight_mh
     """
+    if downsamplesize not in (3, 5):
+        raise Exception("Only downsample by 3 or 5")
+
     test_str = csv_fname.split(':')
     try:
         if test_str[4] == '':
@@ -139,69 +149,17 @@ def downsample(raw_data, downsamplesize=5, avg_method='mean', csv_fname=None):
     except:
         csv_fname = csv_fname + ':'
 
-    dss = downsamplesize
-    length = len(raw_data)
-
-    # get the mod to see spillover data
-    mod = length % dss
-
     output = []
-
-    # check to see start position. First element of array is 0
-    if dss == 3:
-        start = 1
-        ran_start = -1
-        ran_end = 2
-    elif dss == 5:
-        start = 2
-        ran_start = -2
-        ran_end = 3
-    else:
-        print 'non accepted downsample size used. Only 3 and 5 allowed'
-        return None
-
-    for i in range(0, (length - mod) / dss):
-        # i jumps to every center node
-
-        if avg_method == 'mean':
-            if dss == 3:
-                avgX, _, avgZ = allavg([raw_data[start + i * dss - 1], raw_data[start + i * dss], raw_data[start + i * dss + 1]])
-                times = raw_data[start + i * dss].timestamp
-            elif dss == 5:
-                avgX, _, avgZ = allavg([raw_data[start + i * dss - 2], raw_data[start + i * dss - 1], raw_data[start + i * dss], raw_data[start + i * dss + 1], raw_data[start + i * dss + 2]])
-                times = raw_data[start + i * dss].timestamp
-
-        elif avg_method == 'weight':
-            if dss == 3:
-                avgX = three_point_weighted_avg(raw_data[start + i * dss - 1].accelX, raw_data[start + i * dss].accelX, raw_data[start + i * dss + 1].accelX)
-                avgZ = three_point_weighted_avg(raw_data[start + i * dss - 1].accelZ, raw_data[start + i * dss].accelZ, raw_data[start + i * dss + 1].accelZ)
-                times = raw_data[start + i * dss].timestamp
-            elif dss == 5:
-                avgX = five_point_weighted_avg(raw_data[start + i * dss - 2].accelX, raw_data[start + i * dss - 1].accelX, raw_data[start + i * dss].accelX, raw_data[start + i * dss + 1].accelX, raw_data[start + i * dss + 2].accelX)
-                avgZ = five_point_weighted_avg(raw_data[start + i * dss - 2].accelZ, raw_data[start + i * dss - 1].accelZ, raw_data[start + i * dss].accelZ, raw_data[start + i * dss + 1].accelZ, raw_data[start + i * dss + 2].accelZ)
-                times = raw_data[start + i * dss].timestamp
-
-        elif avg_method == 'weight_mh':
-            if dss == 3:
-                avgX = three_point_weighted_avg_mh(raw_data[start + i * dss - 1].accelX, raw_data[start + i * dss].accelX, raw_data[start + i * dss + 1].accelX)
-                avgZ = three_point_weighted_avg_mh(raw_data[start + i * dss - 1].accelZ, raw_data[start + i * dss].accelZ, raw_data[start + i * dss + 1].accelZ)
-                times = raw_data[start + i * dss].timestamp
-            elif dss == 5:
-                avgX = five_point_weighted_avg_mh(raw_data[start + i * dss - 2].accelX, raw_data[start + i * dss - 1].accelX, raw_data[start + i * dss].accelX, raw_data[start + i * dss + 1].accelX, raw_data[start + i * dss + 2].accelX)
-                avgZ = five_point_weighted_avg_mh(raw_data[start + i * dss - 2].accelZ, raw_data[start + i * dss - 1].accelZ, raw_data[start + i * dss].accelZ, raw_data[start + i * dss + 1].accelZ, raw_data[start + i * dss + 2].accelZ)
-                times = raw_data[start + i * dss].timestamp
-
-        # Create new ACCELEROMETER DATAPOINT w/ the downsampled data and commit to redis
+    for i, points in enumerate(chunked(raw_data, downsamplesize)):
+        mid = points[int(downsamplesize / 2)]
         key = test_str[0] + ':proc:' + test_str[2] + ':' + test_str[3] + ':' + str(i + 1)
-        p = Point(x=avgX, y=0, z=avgZ, ts=times)
-        store_point(key, p)
+        ax, _, az = averager(points)
 
-        # append to output
+        p = Point(x=ax, y=0, z=az, ts=mid.ts)
+        store_point(key, p)
         output.append(p)
 
     return output
-
-    pass
 
 
 def sub_avg(ds_data):
