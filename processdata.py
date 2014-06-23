@@ -4,6 +4,7 @@ import csv
 import math
 import logging
 from collections import namedtuple
+from operator import attrgetter
 
 from py2neo import neo4j
 from redis import StrictRedis
@@ -27,6 +28,13 @@ neo = neo4j.GraphDatabaseService("http://138.91.93.45:7474/db/data/")
 
 # Points
 
+WEIGHTS_THREE = [0.75, 1.5, 0.75]
+WEIGHTS_THREE_MH = [0.5, 2, 0.5]
+
+WEIGHTS_FIVE = [5.0 / 9.0, 10.0 / 9.0, 15.0 / 9.0, 10.0 / 9.0, 5.0 / 9.0]
+WEIGHTS_FIVE_MH = [5.0 / 18.0, 15.0 / 18.0, 50.0 / 18.0, 15.0 / 18.0, 5.0 / 18.0]
+
+
 Point = namedtuple('Point', 'x y z ts')
 
 
@@ -41,6 +49,21 @@ def store_point(key, point):
         'z': point.z,
         'ts': point.ts
     })
+
+
+def allavg(points):
+    return (avg('x', points), avg('y', points), avg('z', points))
+
+
+def avg(dimension, points):
+    values = [getattr(p, dimension) for p in points]
+    return float(sum(values)) / float(len(values))
+
+
+def weighted_avg(dimension, weights, points):
+    values = [getattr(p, dimension) for p in points]
+    weighted = [w * v for w, v in zip(weights, values)]
+    return float(sum(weighted)) / float(len(values))
 
 
 # Pending
@@ -77,36 +100,7 @@ def create_base_for_processing(csv_fname):
     return data
 
 
-def three_point_avg(x1, x2, x3):
-    res = (x1 + x2 + x3) / 3.0
-    return res
 
-
-def five_point_avg(x1, x2, x3, x4, x5):
-    res = (x1 + x2 + x3 + x4 + x5) / 5.0
-    return res
-
-
-def five_point_weighted_avg(x1, x2, x3, x4, x5):
-    res = x1 / 9.0 + 2.0 * x2 / 9.0 + x3 / 3.0 + 2.0 * x4 / 9.0 + x5 / 9.0
-    return res
-
-
-def five_point_weighted_avg_mh(x1, x2, x3, x4, x5):
-    # this is the same one as the other weighted avg, more weight on the middle (mid heavy)
-    res = x1 / 18.0 + 3.0 * x2 / 18.0 + 10.0 * x3 / 18.0 + 3.0 * x4 / 18.0 + x5 / 18.0
-    return res
-
-
-def three_point_weighted_avg(x1, x2, x3):
-    res = x1 / 4.0 + x2 / 2.0 + x3 / 4.0
-    return res
-
-
-def three_point_weighted_avg_mh(x1, x2, x3):
-    # this is the same one as the other weighted avg, more weight on the middle (mid heavy)
-    res = x1 / 6.0 + 2.0 * x2 / 3.0 + x3 / 6.0
-    return res
 
 
 def get_set_stat(data):
@@ -166,18 +160,17 @@ def downsample(raw_data, downsamplesize=5, avg_method='mean', csv_fname=None):
         print 'non accepted downsample size used. Only 3 and 5 allowed'
         return None
 
-    for i in range(0, (length - mod)/dss):
+    for i in range(0, (length - mod) / dss):
         # i jumps to every center node
 
         if avg_method == 'mean':
             if dss == 3:
-                avgX = three_point_avg(raw_data[start + i * dss - 1].accelX, raw_data[start + i * dss].accelX, raw_data[start + i * dss + 1].accelX)
-                avgZ = three_point_avg(raw_data[start + i * dss - 1].accelZ, raw_data[start + i * dss].accelZ, raw_data[start + i * dss + 1].accelZ)
+                avgX, _, avgZ = allavg([raw_data[start + i * dss - 1], raw_data[start + i * dss], raw_data[start + i * dss + 1]])
                 times = raw_data[start + i * dss].timestamp
             elif dss == 5:
-                avgX = five_point_avg(raw_data[start + i * dss - 2].accelX, raw_data[start + i * dss - 1].accelX, raw_data[start + i * dss].accelX, raw_data[start + i * dss + 1].accelX, raw_data[start + i * dss + 2].accelX)
-                avgZ = five_point_avg(raw_data[start + i * dss - 2].accelZ, raw_data[start + i * dss - 1].accelZ, raw_data[start + i * dss].accelZ, raw_data[start + i * dss + 1].accelZ, raw_data[start + i * dss + 2].accelZ)
+                avgX, _, avgZ = allavg([raw_data[start + i * dss - 2], raw_data[start + i * dss - 1], raw_data[start + i * dss], raw_data[start + i * dss + 1], raw_data[start + i * dss + 2]])
                 times = raw_data[start + i * dss].timestamp
+
         elif avg_method == 'weight':
             if dss == 3:
                 avgX = three_point_weighted_avg(raw_data[start + i * dss - 1].accelX, raw_data[start + i * dss].accelX, raw_data[start + i * dss + 1].accelX)
