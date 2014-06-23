@@ -15,19 +15,12 @@ def upload_csv_to_redis(csvfile):
     file_name = csvfile.replace(".", "_").split("_")
 
     with contextlib.closing(urllib2.urlopen(csvfile)) as f:
-        reader = csv.reader(f)
-
-        # create generic redis line for specific file
-        redisline = 'accel:raw:' + str(file_name[1]) + ':' + str(file_name[2]) + ':'
+        reader = csv.DictReader(f)
 
         for r, row in enumerate(reader):
-            if r == 0:
-                header = row
-            else:
-                for c, word in enumerate(row):
-                    r.hset(redisline + str(r), header[c], word)
-                    r.sadd('keys', redisline + str(r))
-                    # print redisline + str(rownum)
+            key = "accel:raw:%s:%s:%s" % (file_name[1], file_name[2], r)
+            r.hmset(key, row)
+            r.sadd('keys', key)
 
 
 if __name__ == "__main__":
