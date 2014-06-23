@@ -1,451 +1,473 @@
-from bs4 import BeautifulSoup
-from py2neo import neo4j, node, rel
+# coding: utf-8
+import os
+import csv
+import math
+
+from py2neo import neo4j
 import networkx as nx
-import math, urllib2, csv, redis, matplotlib, requests,os
+import redis
+import matplotlib
+import requests
+
 
 matplotlib.use('Agg')
 
+
 class accel_datapoint:
-	"""docstring for raw_datapoint"""
-	def __init__(self,keyname,timestamp=0,accelX=0,accelY=0,accelZ=0):
-		self.timestamp = timestamp
-		self.accelX = accelX
-		self.accelY = accelY
-		self.accelZ = accelZ
-		self.keyname = keyname
+    """docstring for raw_datapoint"""
+    def __init__(self, keyname, timestamp=0, accelX=0, accelY=0, accelZ=0):
+        self.timestamp = timestamp
+        self.accelX = accelX
+        self.accelY = accelY
+        self.accelZ = accelZ
+        self.keyname = keyname
 
-	def submit_to_redis(self, RedisObj):
+    def submit_to_redis(self, RedisObj):
+        RedisObj.hset(self.keyname, 'Timestamp', self.timestamp)
+        RedisObj.hset(self.keyname, 'AccelX', self.accelX)
+        RedisObj.hset(self.keyname, 'AccelY', self.accelY)
+        RedisObj.hset(self.keyname, 'AccelZ', self.accelZ)
+        RedisObj.sadd('keys', self.keyname)
 
 
-		RedisObj.hset(self.keyname,'Timestamp',self.timestamp)
-		RedisObj.hset(self.keyname,'AccelX',self.accelX)
-		RedisObj.hset(self.keyname,'AccelY',self.accelY)
-		RedisObj.hset(self.keyname,'AccelZ',self.accelZ)
-		RedisObj.sadd('keys',self.keyname)
-		
 def get_sample_length(RedisObj, csv_fname):
-	"""
-	how many do i have in the list. Use file name like "accel:raw:0621:235050"
-	"""
-	return len(RedisObj.sscan('keys',0,csv_fname+'*', 10000)[1])
-
-def create_base_for_processing(RedisObj, csv_fname, debug = False):
-	"""
-	Create a list to process later on. Use file name like "accel:raw:0621:235050"
-	"""
-	
-	#get the length of this dataset
-	set_len = get_sample_length(RedisObj,csv_fname)
-	if debug == True: print 'create_base_for_processing _ set length: %s' % (set_len)
-
-	test_str = csv_fname.split(':')
-
-	try:
-		if test_str[4] == '':
-			pass
-	except:
-		csv_fname = csv_fname + ':'
-
-	data = []
-
-	for i in range(1,set_len+1):
-		data_back = RedisObj.hmget(csv_fname+str(i),'Timestamp','AccelX','AccelZ')
-		dp_obj = accel_datapoint(timestamp = float(data_back[0]), accelX = float(data_back[1]), accelZ = float(data_back[2]), keyname = csv_fname+str(i))
-
-		data.append(dp_obj)
+    """
+    how many do i have in the list. Use file name like "accel:raw:0621:235050"
+    """
+    return len(RedisObj.sscan('keys', 0, csv_fname + '*', 10000)[1])
 
 
-	return data
+def create_base_for_processing(RedisObj, csv_fname, debug=False):
+    """
+    Create a list to process later on. Use file name like "accel:raw:0621:235050"
+    """
+    # get the length of this dataset
+    set_len = get_sample_length(RedisObj, csv_fname)
+    if debug == True: print 'create_base_for_processing _ set length: %s' % (set_len)
 
-def three_point_avg(x1,x2,x3):
-	res = (x1 + x2 + x3) / 3.0
-	return res
+    test_str = csv_fname.split(':')
 
-def five_point_avg(x1,x2,x3,x4,x5):
-	res = (x1 + x2 + x3 + x4 + x5) / 5.0
-	return res
+    try:
+        if test_str[4] == '':
+            pass
+    except:
+        csv_fname = csv_fname + ':'
 
-def five_point_weighted_avg(x1,x2,x3,x4,x5):
-	res = x1 / 9.0 + 2.0 * x2 / 9.0 + x3 / 3.0 + 2.0 * x4 / 9.0 + x5 /9.0
-	return res
+    data = []
 
-def five_point_weighted_avg_mh(x1,x2,x3,x4,x5):
-	#this is the same one as the other weighted avg, more weight on the middle (mid heavy)
-	res = x1 / 18.0 + 3.0 * x2 / 18.0 + 10.0 * x3 / 18.0 + 3.0 * x4 / 18.0 + x5 /18.0
-	return res
+    for i in range(1, set_len + 1):
+        data_back = RedisObj.hmget(csv_fname + str(i), 'Timestamp', 'AccelX', 'AccelZ')
+        dp_obj = accel_datapoint(timestamp=float(data_back[0]), accelX=float(data_back[1]), accelZ=float(data_back[2]), keyname=csv_fname + str(i))
 
-def three_point_weighted_avg(x1,x2,x3):
-	res = x1 / 4.0 + x2 / 2.0 + x3 / 4.0
-	return res	
+        data.append(dp_obj)
 
-def three_point_weighted_avg_mh(x1,x2,x3):
-	#this is the same one as the other weighted avg, more weight on the middle (mid heavy)
-	res = x1 / 6.0 + 2.0 * x2 / 3.0 + x3 / 6.0
-	return res
+    return data
+
+
+def three_point_avg(x1, x2, x3):
+    res = (x1 + x2 + x3) / 3.0
+    return res
+
+
+def five_point_avg(x1, x2, x3, x4, x5):
+    res = (x1 + x2 + x3 + x4 + x5) / 5.0
+    return res
+
+
+def five_point_weighted_avg(x1, x2, x3, x4, x5):
+    res = x1 / 9.0 + 2.0 * x2 / 9.0 + x3 / 3.0 + 2.0 * x4 / 9.0 + x5 / 9.0
+    return res
+
+
+def five_point_weighted_avg_mh(x1, x2, x3, x4, x5):
+    # this is the same one as the other weighted avg, more weight on the middle (mid heavy)
+    res = x1 / 18.0 + 3.0 * x2 / 18.0 + 10.0 * x3 / 18.0 + 3.0 * x4 / 18.0 + x5 / 18.0
+    return res
+
+
+def three_point_weighted_avg(x1, x2, x3):
+    res = x1 / 4.0 + x2 / 2.0 + x3 / 4.0
+    return res
+
+
+def three_point_weighted_avg_mh(x1, x2, x3):
+    # this is the same one as the other weighted avg, more weight on the middle (mid heavy)
+    res = x1 / 6.0 + 2.0 * x2 / 3.0 + x3 / 6.0
+    return res
+
 
 def get_set_stat(data):
-	"""
-	this gets the mean, stddev and variance for given list 
-	"""
-	sumamt = 0.0
+    """
+    this gets the mean, stddev and variance for given list
+    """
+    sumamt = 0.0
 
-	for i in range(0,len(data)):
-		sumamt += data[i]
+    for i in range(0, len(data)):
+        sumamt += data[i]
 
-	avg = sumamt/len(data)
+    avg = sumamt / len(data)
 
-	sumamt = 0.0
+    sumamt = 0.0
 
-	for i in range(0,len(data)):
-		sumamt += math.pow((data[i]-avg),2)
+    for i in range(0, len(data)):
+        sumamt += math.pow((data[i] - avg), 2)
 
-	var = sumamt / len(data)
-	stddev = math.sqrt(var)
+    var = sumamt / len(data)
+    stddev = math.sqrt(var)
 
-	out = [avg, stddev, var]
-	return out
+    out = [avg, stddev, var]
+    return out
 
-def downsample(raw_data,downsamplesize=5,avg_method='mean',csv_fname=None):
-	"""
-	downsamples the data with the given average method
 
-	avg_method can be mean, weight or weight_mh
-	"""
-	test_str = csv_fname.split(':')
-	try:
-		if test_str[4] == '':
-			pass
-	except:
-		csv_fname = csv_fname + ':'
+def downsample(raw_data, downsamplesize=5, avg_method='mean', csv_fname=None):
+    """
+    downsamples the data with the given average method
 
-	dss = downsamplesize
-	length = len(raw_data)
+    avg_method can be mean, weight or weight_mh
+    """
+    test_str = csv_fname.split(':')
+    try:
+        if test_str[4] == '':
+            pass
+    except:
+        csv_fname = csv_fname + ':'
 
-	#get the mod to see spillover data
-	mod = length % dss
+    dss = downsamplesize
+    length = len(raw_data)
 
-	output =[]
+    # get the mod to see spillover data
+    mod = length % dss
 
-	#check to see start position. First element of array is 0
-	if dss == 3:
-		start = 1
-		ran_start = -1
-		ran_end = 2
-	elif dss == 5:
-		start = 2
-		ran_start = -2
-		ran_end = 3
-	else:
-		print 'non accepted downsample size used. Only 3 and 5 allowed'
-		return None
+    output = []
 
-	for i in range(0,(length - mod)/dss):
-		#i jumps to every center node 
+    # check to see start position. First element of array is 0
+    if dss == 3:
+        start = 1
+        ran_start = -1
+        ran_end = 2
+    elif dss == 5:
+        start = 2
+        ran_start = -2
+        ran_end = 3
+    else:
+        print 'non accepted downsample size used. Only 3 and 5 allowed'
+        return None
 
-		if avg_method == 'mean':
-			if dss == 3:
-				avgX = three_point_avg(raw_data[start + i * dss - 1].accelX, raw_data[start + i * dss].accelX, raw_data[start + i * dss + 1].accelX)
-				avgZ = three_point_avg(raw_data[start + i * dss - 1].accelZ, raw_data[start + i * dss].accelZ, raw_data[start + i * dss + 1].accelZ)
-				times = raw_data[start + i * dss].timestamp
-			elif dss == 5:
-				avgX = five_point_avg(raw_data[start + i * dss - 2].accelX, raw_data[start + i * dss - 1].accelX, raw_data[start + i * dss].accelX, raw_data[start + i * dss + 1].accelX, raw_data[start + i * dss + 2].accelX)
-				avgZ = five_point_avg(raw_data[start + i * dss - 2].accelZ, raw_data[start + i * dss - 1].accelZ, raw_data[start + i * dss].accelZ, raw_data[start + i * dss + 1].accelZ, raw_data[start + i * dss + 2].accelZ)
-				times = raw_data[start + i * dss].timestamp
-		elif avg_method == 'weight':
-			if dss == 3:
-				avgX = three_point_weighted_avg(raw_data[start + i * dss - 1].accelX, raw_data[start + i * dss].accelX, raw_data[start + i * dss + 1].accelX)
-				avgZ = three_point_weighted_avg(raw_data[start + i * dss - 1].accelZ, raw_data[start + i * dss].accelZ, raw_data[start + i * dss + 1].accelZ)
-				times = raw_data[start + i * dss].timestamp
-			elif dss == 5:
-				avgX = five_point_weighted_avg(raw_data[start + i * dss - 2].accelX, raw_data[start + i * dss - 1].accelX, raw_data[start + i * dss].accelX, raw_data[start + i * dss + 1].accelX, raw_data[start + i * dss + 2].accelX)
-				avgZ = five_point_weighted_avg(raw_data[start + i * dss - 2].accelZ, raw_data[start + i * dss - 1].accelZ, raw_data[start + i * dss].accelZ, raw_data[start + i * dss + 1].accelZ, raw_data[start + i * dss + 2].accelZ)
-				times = raw_data[start + i * dss].timestamp
+    for i in range(0, (length - mod)/dss):
+        # i jumps to every center node
 
-		elif avg_method == 'weight_mh':
-			if dss == 3:
-				avgX = three_point_weighted_avg_mh(raw_data[start + i * dss - 1].accelX, raw_data[start + i * dss].accelX, raw_data[start + i * dss + 1].accelX)
-				avgZ = three_point_weighted_avg_mh(raw_data[start + i * dss - 1].accelZ, raw_data[start + i * dss].accelZ, raw_data[start + i * dss + 1].accelZ)
-				times = raw_data[start + i * dss].timestamp
-			elif dss == 5:
-				avgX = five_point_weighted_avg_mh(raw_data[start + i * dss - 2].accelX, raw_data[start + i * dss - 1].accelX, raw_data[start + i * dss].accelX, raw_data[start + i * dss + 1].accelX, raw_data[start + i * dss + 2].accelX)
-				avgZ = five_point_weighted_avg_mh(raw_data[start + i * dss - 2].accelZ, raw_data[start + i * dss - 1].accelZ, raw_data[start + i * dss].accelZ, raw_data[start + i * dss + 1].accelZ, raw_data[start + i * dss + 2].accelZ)
-				times = raw_data[start + i * dss].timestamp
+        if avg_method == 'mean':
+            if dss == 3:
+                avgX = three_point_avg(raw_data[start + i * dss - 1].accelX, raw_data[start + i * dss].accelX, raw_data[start + i * dss + 1].accelX)
+                avgZ = three_point_avg(raw_data[start + i * dss - 1].accelZ, raw_data[start + i * dss].accelZ, raw_data[start + i * dss + 1].accelZ)
+                times = raw_data[start + i * dss].timestamp
+            elif dss == 5:
+                avgX = five_point_avg(raw_data[start + i * dss - 2].accelX, raw_data[start + i * dss - 1].accelX, raw_data[start + i * dss].accelX, raw_data[start + i * dss + 1].accelX, raw_data[start + i * dss + 2].accelX)
+                avgZ = five_point_avg(raw_data[start + i * dss - 2].accelZ, raw_data[start + i * dss - 1].accelZ, raw_data[start + i * dss].accelZ, raw_data[start + i * dss + 1].accelZ, raw_data[start + i * dss + 2].accelZ)
+                times = raw_data[start + i * dss].timestamp
+        elif avg_method == 'weight':
+            if dss == 3:
+                avgX = three_point_weighted_avg(raw_data[start + i * dss - 1].accelX, raw_data[start + i * dss].accelX, raw_data[start + i * dss + 1].accelX)
+                avgZ = three_point_weighted_avg(raw_data[start + i * dss - 1].accelZ, raw_data[start + i * dss].accelZ, raw_data[start + i * dss + 1].accelZ)
+                times = raw_data[start + i * dss].timestamp
+            elif dss == 5:
+                avgX = five_point_weighted_avg(raw_data[start + i * dss - 2].accelX, raw_data[start + i * dss - 1].accelX, raw_data[start + i * dss].accelX, raw_data[start + i * dss + 1].accelX, raw_data[start + i * dss + 2].accelX)
+                avgZ = five_point_weighted_avg(raw_data[start + i * dss - 2].accelZ, raw_data[start + i * dss - 1].accelZ, raw_data[start + i * dss].accelZ, raw_data[start + i * dss + 1].accelZ, raw_data[start + i * dss + 2].accelZ)
+                times = raw_data[start + i * dss].timestamp
 
-		
-		#Create new ACCELEROMETER DATAPOINT w/ the downsampled data and commit to redis
-		dp_obj = accel_datapoint(timestamp = times, accelX = avgX, accelZ = avgZ, keyname = test_str[0] + ':proc:' + test_str[2] + ':' + test_str[3] + ':' + str(i+1))
-		dp_obj.submit_to_redis(RedisObj = r)
+        elif avg_method == 'weight_mh':
+            if dss == 3:
+                avgX = three_point_weighted_avg_mh(raw_data[start + i * dss - 1].accelX, raw_data[start + i * dss].accelX, raw_data[start + i * dss + 1].accelX)
+                avgZ = three_point_weighted_avg_mh(raw_data[start + i * dss - 1].accelZ, raw_data[start + i * dss].accelZ, raw_data[start + i * dss + 1].accelZ)
+                times = raw_data[start + i * dss].timestamp
+            elif dss == 5:
+                avgX = five_point_weighted_avg_mh(raw_data[start + i * dss - 2].accelX, raw_data[start + i * dss - 1].accelX, raw_data[start + i * dss].accelX, raw_data[start + i * dss + 1].accelX, raw_data[start + i * dss + 2].accelX)
+                avgZ = five_point_weighted_avg_mh(raw_data[start + i * dss - 2].accelZ, raw_data[start + i * dss - 1].accelZ, raw_data[start + i * dss].accelZ, raw_data[start + i * dss + 1].accelZ, raw_data[start + i * dss + 2].accelZ)
+                times = raw_data[start + i * dss].timestamp
 
-		#append to output 
-		output.append(dp_obj)
+        # Create new ACCELEROMETER DATAPOINT w/ the downsampled data and commit to redis
+        dp_obj = accel_datapoint(timestamp=times, accelX=avgX, accelZ=avgZ, keyname=test_str[0] + ':proc:' + test_str[2] + ':' + test_str[3] + ':' + str(i + 1))
+        dp_obj.submit_to_redis(RedisObj=r)
 
-	return output
+        # append to output
+        output.append(dp_obj)
 
-	pass	
+    return output
+
+    pass
+
 
 def sub_avg(ds_data):
-	"""
-	Get a list of ALREADY DOWNSAMPLED accel_datapoint objects, return the same object with averages taken out of X and Z directions
-	This is not submitted to redis as it's an easy function to run
+    """
+    Get a list of ALREADY DOWNSAMPLED accel_datapoint objects, return the same object with averages taken out of X and Z directions
+    This is not submitted to redis as it's an easy function to run
 
-	Output is [ [x_avg,x_stddev,x_var], [z_avg,z_stddev,z_var], accel_datapoint list]
-	"""
-	x_list=[]
-	z_list=[]
-	for i in range(0,len(ds_data)):
-		x_list.append(ds_data[i].accelX)
-		z_list.append(ds_data[i].accelZ)
+    Output is [ [x_avg,x_stddev,x_var], [z_avg,z_stddev,z_var], accel_datapoint list]
+    """
+    x_list = []
+    z_list = []
+    for i in range(0, len(ds_data)):
+        x_list.append(ds_data[i].accelX)
+        z_list.append(ds_data[i].accelZ)
 
-	x_stat = get_set_stat(x_list)
-	z_stat = get_set_stat(z_list)
+    x_stat = get_set_stat(x_list)
+    z_stat = get_set_stat(z_list)
 
-	out = []
+    out = []
 
-	for i in range(0,len(ds_data)):
-		test_str = ds_data[i].keyname.split(':')
-		dp_obj = accel_datapoint(timestamp = ds_data[i].timestamp, accelX = ds_data[i].accelX - x_stat[0], 
-			accelZ = ds_data[i].accelZ - z_stat[0] , keyname = test_str[0] + ':ds-avg:' + test_str[2] + ':' + test_str[3] + ':' + str(i+1))
+    for i in range(0, len(ds_data)):
+        test_str = ds_data[i].keyname.split(':')
+        dp_obj = accel_datapoint(timestamp=ds_data[i].timestamp, accelX=ds_data[i].accelX - x_stat[0],
+            accelZ=ds_data[i].accelZ - z_stat[0], keyname=test_str[0] + ':ds-avg:' + test_str[2] + ':' + test_str[3] + ':' + str(i + 1))
 
-		out.append(dp_obj)
+        out.append(dp_obj)
 
-	return [x_stat, z_stat, out]
+    return [x_stat, z_stat, out]
 
-def step_fnc(ds_avg_dataset, x_stats, z_stats, stddev_w = 1.0):
-	"""
-	uses basic statistical data to turn the downsamples (avg's taken out) into step functions
-	the Y axis is used as a placeholder for the cross correleation
-	"""
-	length = len(ds_avg_data)
 
-	out = []
-	for i in range(0,length):
-		if ds_avg_data[i].accelX < x_stat[0] - stddev_w * x_stat[1]:
-			temp_x = -0.5
+def step_fnc(ds_avg_dataset, x_stats, z_stats, stddev_w=1.0):
+    """
+    uses basic statistical data to turn the downsamples (avg's taken out) into step functions
+    the Y axis is used as a placeholder for the cross correleation
+    """
+    length = len(ds_avg_data)
 
-		elif ds_avg_data[i].accelX > x_stat[0] + stddev_w * x_stat[1]:
-			temp_x = 0.5			
+    out = []
+    for i in range(0, length):
+        if ds_avg_data[i].accelX < x_stat[0] - stddev_w * x_stat[1]:
+            temp_x = -0.5
 
-		else:
-			temp_x = 0.0
+        elif ds_avg_data[i].accelX > x_stat[0] + stddev_w * x_stat[1]:
+            temp_x = 0.5
 
-		if ds_avg_data[i].accelZ < x_stat[0] - stddev_w * x_stat[1]:
-			temp_z = -0.5
+        else:
+            temp_x = 0.0
 
-		elif ds_avg_data[i].accelZ > x_stat[0] + stddev_w * x_stat[1]:
-			temp_z = 0.5			
+        if ds_avg_data[i].accelZ < x_stat[0] - stddev_w * x_stat[1]:
+            temp_z = -0.5
 
-		else:
-			temp_z = 0.0
+        elif ds_avg_data[i].accelZ > x_stat[0] + stddev_w * x_stat[1]:
+            temp_z = 0.5
 
-		test_str = ds_avg_data[i].keyname.split(':')
-		dp_obj = accel_datapoint(timestamp = ds_avg_dataset[i].timestamp, accelX = temp_x, accelZ = temp_z, accelY = abs(temp_x)+abs(temp_z), keyname = test_str[0] + ':step:' + test_str[2] + ':' + test_str[3] + ':' + str(i+1))
-		dp_obj.submit_to_redis(RedisObj = r)
+        else:
+            temp_z = 0.0
 
-		out.append(dp_obj)
+        test_str = ds_avg_data[i].keyname.split(':')
+        dp_obj = accel_datapoint(timestamp=ds_avg_dataset[i].timestamp, accelX=temp_x, accelZ=temp_z, accelY=abs(temp_x) + abs(temp_z), keyname=test_str[0] + ':step:' + test_str[2] + ':' + test_str[3] + ':' + str(i + 1))
+        dp_obj.submit_to_redis(RedisObj=r)
 
-	return out
+        out.append(dp_obj)
 
-def dump_to_csv(filename,dataset):
-	"""
-	dump any given dataset into a .csv file
-	"""
+    return out
 
-	length = len(dataset)
-	f = open(filename+'.csv','wb')
-	try:
-		writer = csv.writer(f)
-		writer.writerow(('Timestamp', 'AccelX', 'AccelY', 'AccelZ'))
 
-		for i in range(0,len(dataset)):
-			writer.writerow((str(dataset[i].timestamp), str(dataset[i].accelX), str(dataset[i].accelY), str(dataset[i].accelZ)))
+def dump_to_csv(filename, dataset):
+    """
+    dump any given dataset into a .csv file
+    """
+    length = len(dataset)
+    f = open(filename + '.csv', 'wb')
+    try:
+        writer = csv.writer(f)
+        writer.writerow(('Timestamp', 'AccelX', 'AccelY', 'AccelZ'))
 
-	except:
-	 	return -1
-	finally:
-		f.close()
+        for i in range(0, len(dataset)):
+            writer.writerow((str(dataset[i].timestamp), str(dataset[i].accelX), str(dataset[i].accelY), str(dataset[i].accelZ)))
 
-	return 1
+    except:
+        return -1
+    finally:
+        f.close()
 
-def discover_turns(dataset, debug = False):
-	"""
-	this function takes a accel_datapoint list, which is assumed to be already converted to step function
-	It discoveres every cross correleation with amplitude of 1 and records the movement
+    return 1
 
-	an example data output is
 
-	{'start': time, 'end': time, 'turn_begin': [time_list], 'turn_end' : [time_list], 'turn_count' = (count(turns)) }
-	"""
+def discover_turns(dataset, debug=False):
+    """
+    this function takes a accel_datapoint list, which is assumed to be already converted to step function
+    It discoveres every cross correleation with amplitude of 1 and records the movement
 
-	start_time = dataset[0].timestamp
-	end_time = dataset[-1].timestamp
+    an example data output is
 
-	turn_begin = []
-	turn_end = []
+    {'start': time, 'end': time, 'turn_begin': [time_list], 'turn_end' : [time_list], 'turn_count' = (count(turns)) }
+    """
 
-	turn_count = 0
+    start_time = dataset[0].timestamp
+    end_time = dataset[-1].timestamp
 
-	
-	i = 0
-	lastzero = 0
-	turn_flag = 0
-	while i < len(dataset):
+    turn_begin = []
+    turn_end = []
 
-		if dataset[i].accelY == 1.0:
-			turn_flag = 1
-			if debug == True : print "lastzero: %s" % (lastzero)
-			i = lastzero
-			continue
+    turn_count = 0
 
-		elif dataset[i].accelY == 0.0:
-			lastzero = i
+    i = 0
+    lastzero = 0
+    turn_flag = 0
+    while i < len(dataset):
 
-		if turn_flag == 1:
-			j = 1 #The reason you start from one is not to infinite loop on "lastzero" node
+        if dataset[i].accelY == 1.0:
+            turn_flag = 1
+            if debug == True:
+                print "lastzero: %s" % (lastzero)
+            i = lastzero
+            continue
 
-			turn_begin.append(dataset[i].timestamp)
-			turn_count += 1
+        elif dataset[i].accelY == 0.0:
+            lastzero = i
 
-			#search until you see next zero that signals the end of the turn
+        if turn_flag == 1:
+            j = 1  # The reason you start from one is not to infinite loop on "lastzero" node
 
-			while(True):
-				if dataset[i+j].accelY == 0.0:
-					turn_end.append(dataset[i+j].timestamp)
-					break
-				if debug == True : print "j: %s" % (j)
-				j += 1
+            turn_begin.append(dataset[i].timestamp)
+            turn_count += 1
 
-			i +=  j
-			turn_flag = 0
-			continue
+            # search until you see next zero that signals the end of the turn
 
-		if debug == True : print "i: %s" % (i)
-		i += 1
-		
+            while(True):
+                if dataset[i + j].accelY == 0.0:
+                    turn_end.append(dataset[i + j].timestamp)
+                    break
+                if debug == True:
+                    print "j: %s" % (j)
+                j += 1
 
-	out = {'start' : start_time, 'end' : end_time, 'turn_begin' : turn_begin, 'turn_end' : turn_end, 'turn_count': turn_count}
-	return out
+            i += j
+            turn_flag = 0
+            continue
+
+        if debug == True:
+            print "i: %s" % (i)
+        i += 1
+
+    out = {'start': start_time, 'end': end_time, 'turn_begin': turn_begin, 'turn_end': turn_end, 'turn_count': turn_count}
+    return out
+
 
 def linkdata(turndata):
-	"""
-	this function takes a turn_data dictionary and converts it to link data. The network topology is known (BIG ASS ASSUMPTION)
+    """
+    this function takes a turn_data dictionary and converts it to link data. The network topology is known (BIG ASS ASSUMPTION)
 
-	turndata = {'start' : start_time, 'end' : end_time, 'turn_begin' : turn_begin, 'turn_end' : turn_end, 'turn_count': turn_count}
-	"""
-	link1_tt = turndata['turn_begin'][0] - turndata['start']
+    turndata = {'start' : start_time, 'end' : end_time, 'turn_begin' : turn_begin, 'turn_end' : turn_end, 'turn_count': turn_count}
+    """
+    link1_tt = turndata['turn_begin'][0] - turndata['start']
 
-	link2_tt = turndata['end'] - turndata['turn_end'][0]
+    link2_tt = turndata['end'] - turndata['turn_end'][0]
 
-	return [link1_tt, link2_tt]
-
-if __name__ == "__main__": 
-	r = redis.StrictRedis(host='localhost', port='6379', db=0)
-	graph_db = neo4j.GraphDatabaseService("http://138.91.93.45:7474/db/data/")
-
-	speed = 'high'
-	filename = 'accel:raw:0622:144729'
-
-	test = create_base_for_processing(r,filename)
-
-	processed_data = downsample(raw_data = test, csv_fname = filename)
-
-	returned = sub_avg(processed_data)
-
-	x_stat = returned[0]
-	z_stat = returned[1]
-
-	ds_avg_data = returned[2]
-
-	step_out = step_fnc(ds_avg_dataset=  ds_avg_data, x_stats=  x_stat, z_stats= z_stat, stddev_w = 1.5)
-
-	turntest = discover_turns(step_out)
-
-	tt = linkdata(turntest)
-
-	#START NEO TEST
-
-	#STATIC PATH NODES A-C-E-F
-	#DYNAMIC PATH NODES A-B-D-F
+    return [link1_tt, link2_tt]
 
 
-	for i in graph_db.find("ROADNODE", property_key="nID", property_value="A"): nod_a = i
-	for i in graph_db.find("ROADNODE", property_key="nID", property_value="B"): nod_b = i
-	for i in graph_db.find("ROADNODE", property_key="nID", property_value="C"): nod_c = i
-	for i in graph_db.find("ROADNODE", property_key="nID", property_value="D"): nod_d = i
-	for i in graph_db.find("ROADNODE", property_key="nID", property_value="E"): nod_e = i
-	for i in graph_db.find("ROADNODE", property_key="nID", property_value="F"): nod_f = i
+if __name__ == "__main__":
+    r = redis.StrictRedis(host='localhost', port='6379', db=0)
+    graph_db = neo4j.GraphDatabaseService("http://138.91.93.45:7474/db/data/")
 
-	link_ab = graph_db.match_one(start_node = nod_a, end_node = nod_b)
-	link_bd = graph_db.match_one(start_node = nod_b, end_node = nod_d)
-	link_df = graph_db.match_one(start_node = nod_d, end_node = nod_f)
+    speed = 'high'
+    filename = 'accel:raw:0622:144729'
 
-	link_ac = graph_db.match_one(start_node = nod_a, end_node = nod_c)
-	link_ce = graph_db.match_one(start_node = nod_c, end_node = nod_e)
-	link_ef = graph_db.match_one(start_node = nod_e, end_node = nod_f)
+    test = create_base_for_processing(r, filename)
 
+    processed_data = downsample(raw_data=test, csv_fname=filename)
 
-	link_bd["tt"] = tt[0]
-	link_df["tt"] = tt[1]
+    returned = sub_avg(processed_data)
 
-	#SHORTEST PATH
+    x_stat = returned[0]
+    z_stat = returned[1]
 
-	payload ="""{"to" : "http://localhost:7474/db/data/node/<START>", "cost_property" : "tt", "relationships" : {"type" : "CONNECTS_TO","direction" : "out"},"algorithm" : "dijkstra"}"""
+    ds_avg_data = returned[2]
 
-	reply = requests.post('http://localhost:7474/db/data/node/0/paths', data = payload)
-	
-	
-	#GRAPH
+    step_out = step_fnc(ds_avg_dataset=ds_avg_data, x_stats=x_stat, z_stats=z_stat, stddev_w=1.5)
 
-	G=nx.Graph()
-	pos = {0:(0,0),
-		   1:(1,1),
-		   2:(1,-1),
-		   3:(2,1),
-		   4:(2,-1),
-		   5:(3,0), 
-	}
+    turntest = discover_turns(step_out)
 
-	G.add_edge(0,1)
-	G.add_edge(0,2)
-	G.add_edge(1,3)
-	G.add_edge(2,4)
-	G.add_edge(3,5)
-	G.add_edge(4,5)
+    tt = linkdata(turntest)
 
-	G = G.to_directed()
+    # START NEO TEST
 
-	G.add_path([0,1,3,5])
-	G.add_path([0,2,4,5])
+    # STATIC PATH NODES A-C-E-F
+    # DYNAMIC PATH NODES A-B-D-F
 
-	nx.draw_networkx_nodes(G,pos,node_size=400,nodelist=[0,5],node_color='#FF0000')
-	nx.draw_networkx_nodes(G,pos,node_size=300,nodelist=[1,2,3,4],node_color='#00FFFF')
+    for i in graph_db.find("ROADNODE", property_key="nID", property_value="A"):
+        nod_a = i
+    for i in graph_db.find("ROADNODE", property_key="nID", property_value="B"):
+        nod_b = i
+    for i in graph_db.find("ROADNODE", property_key="nID", property_value="C"):
+        nod_c = i
+    for i in graph_db.find("ROADNODE", property_key="nID", property_value="D"):
+        nod_d = i
+    for i in graph_db.find("ROADNODE", property_key="nID", property_value="E"):
+        nod_e = i
+    for i in graph_db.find("ROADNODE", property_key="nID", property_value="F"):
+        nod_f = i
 
-	#print G.edges()
+    link_ab = graph_db.match_one(start_node=nod_a, end_node=nod_b)
+    link_bd = graph_db.match_one(start_node=nod_b, end_node=nod_d)
+    link_df = graph_db.match_one(start_node=nod_d, end_node=nod_f)
 
-	#DECIDE LEFT OR RIGHT
-	if reply.json()[0]['nodes'][1].split("/")[6] == unicode('1'):
-		print "sol kisa"
-		nx.draw_networkx_edges(G,pos,width=3,edgelist=[(0,1)],edge_color='#00CC00',style='dashed',arrows=True)
-		nx.draw_networkx_edges(G,pos,width=3,edgelist=[(1,3),(3,5)],edge_color='#00CC00',arrows=True)
-		nx.draw_networkx_edges(G,pos,width=1,edgelist=[(0,2)],edge_color='#000000',style='dashed',arrows=True)
-		nx.draw_networkx_edges(G,pos,width=1,edgelist=[(2,4),(4,5)],edge_color='#000000',arrows=True)
-	else:
-		print "sag kisa"
-		nx.draw_networkx_edges(G,pos,width=1,edgelist=[(0,1)],edge_color='#000000',style='dashed',arrows=True)
-		nx.draw_networkx_edges(G,pos,width=1,edgelist=[(1,3),(3,5)],edge_color='#000000',arrows=True)
-		nx.draw_networkx_edges(G,pos,width=3,edgelist=[(0,2)],edge_color='#00CC00',style='dashed',arrows=True)
-		nx.draw_networkx_edges(G,pos,width=3,edgelist=[(2,4),(4,5)],edge_color='#00CC00',arrows=True)
+    link_ac = graph_db.match_one(start_node=nod_a, end_node=nod_c)
+    link_ce = graph_db.match_one(start_node=nod_c, end_node=nod_e)
+    link_ef = graph_db.match_one(start_node=nod_e, end_node=nod_f)
 
-	nx.draw_networkx_labels(G, pos, font_size=12, font_color='k',font_family='sans-serif', 
-		font_weight='normal', alpha=1.0)
-	nx.draw_networkx_edge_labels(G, pos, edge_labels={(0,1):link_ab["tt"],(1,3):link_bd["tt"],(3,5):link_df["tt"]
-		,(0,2):link_ac["tt"],(2,4):link_ce["tt"],(4,5):link_ef["tt"]},
-	 label_pos=0.5, font_size=10, font_color='k',font_family='sans-serif', font_weight='normal', 
-	 alpha=1.0, bbox=None, ax=None, rotate=True)
+    link_bd["tt"] = tt[0]
+    link_df["tt"] = tt[1]
 
-	matplotlib.pyplot.axis('on')
-	matplotlib.pyplot.savefig("hackathon.png")
-	os.system("cp hackathon.png samplewebserver/static/hackathon.png")
+    # SHORTEST PATH
 
-	
+    payload = """{"to" : "http://localhost:7474/db/data/node/<START>", "cost_property" : "tt", "relationships" : {"type" : "CONNECTS_TO","direction" : "out"},"algorithm" : "dijkstra"}"""
 
+    reply = requests.post('http://localhost:7474/db/data/node/0/paths', data = payload)
 
+    # GRAPH
+
+    G = nx.Graph()
+    pos = {
+        0: (0, 0),
+        1: (1, 1),
+        2: (1, -1),
+        3: (2, 1),
+        4: (2, -1),
+        5: (3, 0),
+    }
+
+    G.add_edge(0, 1)
+    G.add_edge(0, 2)
+    G.add_edge(1, 3)
+    G.add_edge(2, 4)
+    G.add_edge(3, 5)
+    G.add_edge(4, 5)
+
+    G = G.to_directed()
+
+    G.add_path([0, 1, 3, 5])
+    G.add_path([0, 2, 4, 5])
+
+    nx.draw_networkx_nodes(G, pos, node_size=400, nodelist=[0, 5], node_color='#FF0000')
+    nx.draw_networkx_nodes(G, pos, node_size=300, nodelist=[1, 2, 3, 4], node_color='#00FFFF')
+
+    # print G.edges()
+
+    # DECIDE LEFT OR RIGHT
+    if reply.json()[0]['nodes'][1].split("/")[6] == unicode('1'):
+        print "sol kisa"
+        nx.draw_networkx_edges(G, pos, width=3, edgelist=[(0, 1)], edge_color='#00CC00', style='dashed', arrows=True)
+        nx.draw_networkx_edges(G, pos, width=3, edgelist=[(1, 3), (3, 5)], edge_color='#00CC00', arrows=True)
+        nx.draw_networkx_edges(G, pos, width=1, edgelist=[(0, 2)], edge_color='#000000', style='dashed', arrows=True)
+        nx.draw_networkx_edges(G, pos, width=1, edgelist=[(2, 4), (4, 5)], edge_color='#000000', arrows=True)
+    else:
+        print "sag kisa"
+        nx.draw_networkx_edges(G, pos, width=1, edgelist=[(0, 1)], edge_color='#000000', style='dashed', arrows=True)
+        nx.draw_networkx_edges(G, pos, width=1, edgelist=[(1, 3), (3, 5)], edge_color='#000000', arrows=True)
+        nx.draw_networkx_edges(G, pos, width=3, edgelist=[(0, 2)], edge_color='#00CC00', style='dashed', arrows=True)
+        nx.draw_networkx_edges(G, pos, width=3, edgelist=[(2, 4), (4, 5)], edge_color='#00CC00', arrows=True)
+
+    nx.draw_networkx_labels(G, pos, font_size=12, font_color='k', font_family='sans-serif', font_weight='normal', alpha=1.0)
+    nx.draw_networkx_edge_labels(G, pos, edge_labels={
+        (0, 1): link_ab["tt"],
+        (1, 3): link_bd["tt"],
+        (3, 5): link_df["tt"],
+        (0, 2): link_ac["tt"],
+        (2, 4): link_ce["tt"],
+        (4, 5): link_ef["tt"]
+    }, label_pos=0.5, font_size=10, font_color='k', font_family='sans-serif', font_weight='normal', alpha=1.0, bbox=None, ax=None, rotate=True)
+
+    matplotlib.pyplot.axis('on')
+    matplotlib.pyplot.savefig("hackathon.png")
+    os.system("cp hackathon.png samplewebserver/static/hackathon.png")
