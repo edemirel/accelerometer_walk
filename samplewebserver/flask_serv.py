@@ -1,6 +1,6 @@
 # coding: utf-8
-import datetime
 import logging
+from datetime import datetime
 
 from flask import Flask, render_template
 
@@ -14,7 +14,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def landhere():
-    now = datetime.datetime.now()
+    now = datetime.now()
     timeString = now.strftime("%Y-%m-%d %H:%M")
     templateData = {
         'title': 'Ege Demirel',
@@ -26,7 +26,7 @@ def landhere():
 
 @app.route("/test")
 def landhere2():
-    now = datetime.datetime.now()
+    now = datetime.now()
     timeString = now.strftime("%Y-%m-%d %H:%M")
     templateData = {
         'title': 'Ege Demirel',
