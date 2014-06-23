@@ -6,6 +6,9 @@ import urllib2
 import redis
 
 
+CSVSTORE = "http://localhost/static/"
+
+
 def upload_csv_to_redis(csv_filename):
     # explode filename into parts
     file_name = csv_filename.replace(".", "_").split("_")
@@ -37,13 +40,10 @@ def upload_csv_to_redis(csv_filename):
 
 
 if __name__ == "__main__":
-    # CONFIG
     r = redis.StrictRedis(host='localhost', port='6379', db=0)
 
     # I reset the Redis db every run, for no appearent reason
     r.flushdb()
-
-    CSVSTORE = "http://localhost/static/"
 
     list_csv = os.listdir("<DIRECTORY_WHERE_YOU_PUT_YOUR_ACCELEROMETER DATA")
 
