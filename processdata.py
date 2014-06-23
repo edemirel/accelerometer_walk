@@ -18,15 +18,19 @@ redis = StrictRedis(host='localhost', port='6379', db=0)
 neo = neo4j.GraphDatabaseService("http://138.91.93.45:7474/db/data/")
 
 
-Point = namedtuple('Point', 'ts key x y z')
+Point = namedtuple('Point', 'x y z ts')
 
 
-def store_point(point):
-    redis.hmset(point.key, {
-        'ts': point.ts,
+def load_point(key):
+    return Point(redis.hgetall(key))
+
+
+def store_point(key, point):
+    redis.hmset(key, {
         'x': point.x,
         'y': point.y,
-        'z': point.z
+        'z': point.z,
+        'ts': point.ts
     })
 
 
@@ -57,8 +61,7 @@ def create_base_for_processing(csv_fname, debug=False):
     data = []
 
     for i in range(1, set_len + 1):
-        data_back = redis.hmget(csv_fname + str(i), 'Timestamp', 'AccelX', 'AccelZ')
-        p = Point(ts=float(data_back[0]), x=float(data_back[1]), y=0, z=float(data_back[2]), key=csv_fname + str(i))
+        p = load_point(csv_fname + str(i))
         data.append(p)
 
     return data
@@ -186,8 +189,9 @@ def downsample(raw_data, downsamplesize=5, avg_method='mean', csv_fname=None):
                 times = raw_data[start + i * dss].timestamp
 
         # Create new ACCELEROMETER DATAPOINT w/ the downsampled data and commit to redis
-        p = Point(ts=times, x=avgX, y=0, z=avgZ, key=test_str[0] + ':proc:' + test_str[2] + ':' + test_str[3] + ':' + str(i + 1))
-        store_point(p)
+        key = test_str[0] + ':proc:' + test_str[2] + ':' + test_str[3] + ':' + str(i + 1)
+        p = Point(x=avgX, y=0, z=avgZ, ts=times)
+        store_point(key, p)
 
         # append to output
         output.append(p)
