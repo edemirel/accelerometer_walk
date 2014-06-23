@@ -12,28 +12,21 @@ log.setLevel(logging.ERROR)
 app = Flask(__name__)
 
 
-@app.route("/")
-def landhere():
-    now = datetime.now()
-    timeString = now.strftime("%Y-%m-%d %H:%M")
-    templateData = {
-        'title': 'Ege Demirel',
-        'time': timeString
+@app.context_processor
+def timestamp():
+    return {
+        'time': datetime.now().isoformat()
     }
 
-    return render_template('main.html', **templateData)
+
+@app.route("/")
+def index():
+    return render_template('main.html')
 
 
 @app.route("/test")
-def landhere2():
-    now = datetime.now()
-    timeString = now.strftime("%Y-%m-%d %H:%M")
-    templateData = {
-        'title': 'Ege Demirel',
-        'time': timeString
-    }
-
-    return render_template('test.html', **templateData)
+def test():
+    return render_template('test.html')
 
 
 if __name__ == "__main__":

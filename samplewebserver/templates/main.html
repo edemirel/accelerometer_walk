@@ -1,17 +1,6 @@
-<!DOCTYPE html>
-	<head>
-		<title> {{ title }}</title>
-    </head>
+{% extends "base.html" %}
 
-    <body>
-        <h1>This is my Virtual Machine on Microsoft Azure, it seems to be working</h1>
-        <h2>The date and time on this VM is {{ time }} </h2>
-        <p>The cake is indeed a lie!</p>
-        <br><br><br>
-
-        <h2>Shortest Path from Neo4j REST API Call</h2>
-        <img src="/static/hackathon.png" alt="Shorest Path from Neo4j REST API Call" height="600" width="800">
-
-        	
-    </body>
-</html>
+{% block content %}
+    <h2>Shortest Path from Neo4j REST API Call</h2>
+    <img src="/static/hackathon.png" alt="Shorest Path from Neo4j REST API Call" height="600" width="800">
+{% endblock %}
