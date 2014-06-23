@@ -5,10 +5,11 @@ import logging
 from flask import Flask, render_template
 
 
-app = Flask(__name__)
-
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
+
+
+app = Flask(__name__)
 
 
 @app.route("/")
