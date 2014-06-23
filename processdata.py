@@ -4,8 +4,8 @@ import csv
 import math
 
 from py2neo import neo4j
+from redis import StrictRedis
 import networkx as nx
-import redis
 import matplotlib
 import requests
 
@@ -13,8 +13,8 @@ import requests
 matplotlib.use('Agg')
 
 
-redisconn = redis.StrictRedis(host='localhost', port='6379', db=0)
-neoconn = neo4j.GraphDatabaseService("http://138.91.93.45:7474/db/data/")
+redis = StrictRedis(host='localhost', port='6379', db=0)
+neo = neo4j.GraphDatabaseService("http://138.91.93.45:7474/db/data/")
 
 
 class accel_datapoint:
@@ -26,27 +26,27 @@ class accel_datapoint:
         self.accelZ = accelZ
         self.keyname = keyname
 
-    def submit_to_redis(self, RedisObj):
-        RedisObj.hset(self.keyname, 'Timestamp', self.timestamp)
-        RedisObj.hset(self.keyname, 'AccelX', self.accelX)
-        RedisObj.hset(self.keyname, 'AccelY', self.accelY)
-        RedisObj.hset(self.keyname, 'AccelZ', self.accelZ)
-        RedisObj.sadd('keys', self.keyname)
+    def submit_to_redis(self):
+        redis.hset(self.keyname, 'Timestamp', self.timestamp)
+        redis.hset(self.keyname, 'AccelX', self.accelX)
+        redis.hset(self.keyname, 'AccelY', self.accelY)
+        redis.hset(self.keyname, 'AccelZ', self.accelZ)
+        redis.sadd('keys', self.keyname)
 
 
-def get_sample_length(RedisObj, csv_fname):
+def get_sample_length(csv_fname):
     """
     how many do i have in the list. Use file name like "accel:raw:0621:235050"
     """
-    return len(RedisObj.sscan('keys', 0, csv_fname + '*', 10000)[1])
+    return len(redis.sscan('keys', 0, csv_fname + '*', 10000)[1])
 
 
-def create_base_for_processing(RedisObj, csv_fname, debug=False):
+def create_base_for_processing(csv_fname, debug=False):
     """
     Create a list to process later on. Use file name like "accel:raw:0621:235050"
     """
     # get the length of this dataset
-    set_len = get_sample_length(RedisObj, csv_fname)
+    set_len = get_sample_length(csv_fname)
     if debug:
         print 'create_base_for_processing _ set length: %s' % (set_len)
 
@@ -61,7 +61,7 @@ def create_base_for_processing(RedisObj, csv_fname, debug=False):
     data = []
 
     for i in range(1, set_len + 1):
-        data_back = RedisObj.hmget(csv_fname + str(i), 'Timestamp', 'AccelX', 'AccelZ')
+        data_back = redis.hmget(csv_fname + str(i), 'Timestamp', 'AccelX', 'AccelZ')
         dp_obj = accel_datapoint(timestamp=float(data_back[0]), accelX=float(data_back[1]), accelZ=float(data_back[2]), keyname=csv_fname + str(i))
 
         data.append(dp_obj)
@@ -192,7 +192,7 @@ def downsample(raw_data, downsamplesize=5, avg_method='mean', csv_fname=None):
 
         # Create new ACCELEROMETER DATAPOINT w/ the downsampled data and commit to redis
         dp_obj = accel_datapoint(timestamp=times, accelX=avgX, accelZ=avgZ, keyname=test_str[0] + ':proc:' + test_str[2] + ':' + test_str[3] + ':' + str(i + 1))
-        dp_obj.submit_to_redis(RedisObj=r)
+        dp_obj.submit_to_redis()
 
         # append to output
         output.append(dp_obj)
@@ -259,7 +259,7 @@ def step_fnc(ds_avg_dataset, x_stats, z_stats, stddev_w=1.0):
 
         test_str = ds_avg_data[i].keyname.split(':')
         dp_obj = accel_datapoint(timestamp=ds_avg_dataset[i].timestamp, accelX=temp_x, accelZ=temp_z, accelY=abs(temp_x) + abs(temp_z), keyname=test_str[0] + ':step:' + test_str[2] + ':' + test_str[3] + ':' + str(i + 1))
-        dp_obj.submit_to_redis(RedisObj=r)
+        dp_obj.submit_to_redis()
 
         out.append(dp_obj)
 
@@ -365,7 +365,7 @@ if __name__ == "__main__":
     speed = 'high'
     filename = 'accel:raw:0622:144729'
 
-    test = create_base_for_processing(redisconn, filename)
+    test = create_base_for_processing(filename)
 
     processed_data = downsample(raw_data=test, csv_fname=filename)
 
@@ -387,26 +387,26 @@ if __name__ == "__main__":
     # STATIC PATH NODES A-C-E-F
     # DYNAMIC PATH NODES A-B-D-F
 
-    for i in neoconn.find("ROADNODE", property_key="nID", property_value="A"):
+    for i in neo.find("ROADNODE", property_key="nID", property_value="A"):
         nod_a = i
-    for i in neoconn.find("ROADNODE", property_key="nID", property_value="B"):
+    for i in neo.find("ROADNODE", property_key="nID", property_value="B"):
         nod_b = i
-    for i in neoconn.find("ROADNODE", property_key="nID", property_value="C"):
+    for i in neo.find("ROADNODE", property_key="nID", property_value="C"):
         nod_c = i
-    for i in neoconn.find("ROADNODE", property_key="nID", property_value="D"):
+    for i in neo.find("ROADNODE", property_key="nID", property_value="D"):
         nod_d = i
-    for i in neoconn.find("ROADNODE", property_key="nID", property_value="E"):
+    for i in neo.find("ROADNODE", property_key="nID", property_value="E"):
         nod_e = i
-    for i in neoconn.find("ROADNODE", property_key="nID", property_value="F"):
+    for i in neo.find("ROADNODE", property_key="nID", property_value="F"):
         nod_f = i
 
-    link_ab = neoconn.match_one(start_node=nod_a, end_node=nod_b)
-    link_bd = neoconn.match_one(start_node=nod_b, end_node=nod_d)
-    link_df = neoconn.match_one(start_node=nod_d, end_node=nod_f)
+    link_ab = neo.match_one(start_node=nod_a, end_node=nod_b)
+    link_bd = neo.match_one(start_node=nod_b, end_node=nod_d)
+    link_df = neo.match_one(start_node=nod_d, end_node=nod_f)
 
-    link_ac = neoconn.match_one(start_node=nod_a, end_node=nod_c)
-    link_ce = neoconn.match_one(start_node=nod_c, end_node=nod_e)
-    link_ef = neoconn.match_one(start_node=nod_e, end_node=nod_f)
+    link_ac = neo.match_one(start_node=nod_a, end_node=nod_c)
+    link_ce = neo.match_one(start_node=nod_c, end_node=nod_e)
+    link_ef = neo.match_one(start_node=nod_e, end_node=nod_f)
 
     link_bd["tt"] = tt[0]
     link_df["tt"] = tt[1]
