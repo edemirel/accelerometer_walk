@@ -28,14 +28,13 @@ def store_point(point):
         'y': point.y,
         'z': point.z
     })
-    redis.sadd('keys', point.key)
 
 
 def get_sample_length(csv_fname):
     """
     how many do i have in the list. Use file name like "accel:raw:0621:235050"
     """
-    return len(redis.sscan('keys', 0, csv_fname + '*', 10000)[1])
+    return len(redis.keys(csv_fname + '*'))
 
 
 def create_base_for_processing(csv_fname, debug=False):

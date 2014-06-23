@@ -20,7 +20,6 @@ def upload_csv_to_redis(csvfile):
         for r, row in enumerate(reader):
             key = "accel:raw:%s:%s:%s" % (file_name[1], file_name[2], r)
             r.hmset(key, row)
-            r.sadd('keys', key)
 
 
 if __name__ == "__main__":
