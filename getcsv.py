@@ -45,11 +45,12 @@ if __name__ == "__main__":
     # I reset the Redis db every run, for no appearent reason
     r.flushdb()
 
-    list_csv = os.listdir("<DIRECTORY_WHERE_YOU_PUT_YOUR_ACCELEROMETER DATA")
+    files = ["%s%s" % (CSVSTORE, f) for f in os.listdir("<DIRECTORY_WHERE_YOU_PUT_YOUR_ACCELEROMETER DATA")]
 
-    try:
-        for i in range(0, len(list_csv) - 1):
-            upload_csv_to_redis(list_csv[i])
-            print 'uploaded ' + list_csv[i]
-    except Exception, e:
-        print list_csv[i] + " nope, that didn't happen"
+    for f in files:
+        print "Uploading %s" % f
+        try:
+            upload_csv_to_redis(f)
+            print "    ok"
+        except Exception as e:
+            print "    Ugh... exception!"
