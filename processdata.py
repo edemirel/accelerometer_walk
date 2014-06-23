@@ -128,30 +128,15 @@ def create_base_for_processing(csv_fname):
     return data
 
 
-
-
-
 def get_set_stat(data):
     """
     this gets the mean, stddev and variance for given list
     """
-    sumamt = 0.0
+    mean = sum(data) / float(len(data))
+    variance = sum(d ** 2 - mean for d in data) / float(len(data))
+    stddev = math.sqrt(variance)
 
-    for i in range(0, len(data)):
-        sumamt += data[i]
-
-    avg = sumamt / len(data)
-
-    sumamt = 0.0
-
-    for i in range(0, len(data)):
-        sumamt += math.pow((data[i] - avg), 2)
-
-    var = sumamt / len(data)
-    stddev = math.sqrt(var)
-
-    out = [avg, stddev, var]
-    return out
+    return (avg, stddev, variance)
 
 
 def downsample(raw_data, averager, downsamplesize=5, csv_fname=None):
