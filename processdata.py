@@ -2,6 +2,7 @@
 import os
 import csv
 import math
+import logging
 from collections import namedtuple
 
 from py2neo import neo4j
@@ -9,6 +10,10 @@ from redis import StrictRedis
 import networkx as nx
 import matplotlib
 import requests
+
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 matplotlib.use('Agg')
@@ -41,14 +46,13 @@ def get_sample_length(csv_fname):
     return len(redis.keys(csv_fname + '*'))
 
 
-def create_base_for_processing(csv_fname, debug=False):
+def create_base_for_processing(csv_fname):
     """
     Create a list to process later on. Use file name like "accel:raw:0621:235050"
     """
     # get the length of this dataset
     set_len = get_sample_length(csv_fname)
-    if debug:
-        print 'create_base_for_processing _ set length: %s' % (set_len)
+    logger.debug('create_base_for_processing _ set length: %s', set_len)
 
     test_str = csv_fname.split(':')
 
@@ -284,7 +288,7 @@ def dump_to_csv(filename, dataset):
     return 1
 
 
-def discover_turns(dataset, debug=False):
+def discover_turns(dataset):
     """
     this function takes a accel_datapoint list, which is assumed to be already converted to step function
     It discoveres every cross correleation with amplitude of 1 and records the movement
@@ -309,8 +313,7 @@ def discover_turns(dataset, debug=False):
 
         if dataset[i].accelY == 1.0:
             turn_flag = 1
-            if debug:
-                print "lastzero: %s" % (lastzero)
+            logger.debug("lastzero: %s", lastzero)
             i = lastzero
             continue
 
@@ -329,16 +332,14 @@ def discover_turns(dataset, debug=False):
                 if dataset[i + j].accelY == 0.0:
                     turn_end.append(dataset[i + j].timestamp)
                     break
-                if debug:
-                    print "j: %s" % (j)
+                logger.debug("j: %s", j)
                 j += 1
 
             i += j
             turn_flag = 0
             continue
 
-        if debug:
-            print "i: %s" % (i)
+        logger.debug("i: %s", i)
         i += 1
 
     out = {'start': start_time, 'end': end_time, 'turn_begin': turn_begin, 'turn_end': turn_end, 'turn_count': turn_count}
@@ -412,7 +413,7 @@ if __name__ == "__main__":
 
     payload = """{"to" : "http://localhost:7474/db/data/node/<START>", "cost_property" : "tt", "relationships" : {"type" : "CONNECTS_TO","direction" : "out"},"algorithm" : "dijkstra"}"""
 
-    reply = requests.post('http://localhost:7474/db/data/node/0/paths', data = payload)
+    reply = requests.post('http://localhost:7474/db/data/node/0/paths', data=payload)
 
     # GRAPH
 
