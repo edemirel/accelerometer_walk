@@ -1,13 +1,9 @@
 # coding: utf-8
-# imports from standard library come first:
 import os
 import csv
 import urllib2
 
-# then third-party:
 import redis
-# don't import stuff we don't use:
-# from bs4 import BeautifulSoup
 
 
 def upload_csv_to_redis(csv_filename):
@@ -38,6 +34,7 @@ def upload_csv_to_redis(csv_filename):
                 colnum += 1
 
         rownum += 1
+
 
 if __name__ == "__main__":
     # CONFIG
