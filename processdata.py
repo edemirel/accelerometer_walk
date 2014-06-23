@@ -2,6 +2,7 @@
 import os
 import csv
 import math
+from collections import namedtuple
 
 from py2neo import neo4j
 from redis import StrictRedis
@@ -17,21 +18,17 @@ redis = StrictRedis(host='localhost', port='6379', db=0)
 neo = neo4j.GraphDatabaseService("http://138.91.93.45:7474/db/data/")
 
 
-class accel_datapoint:
-    """docstring for raw_datapoint"""
-    def __init__(self, keyname, timestamp=0, accelX=0, accelY=0, accelZ=0):
-        self.timestamp = timestamp
-        self.accelX = accelX
-        self.accelY = accelY
-        self.accelZ = accelZ
-        self.keyname = keyname
+Point = namedtuple('Point', 'ts key x y z')
 
-    def submit_to_redis(self):
-        redis.hset(self.keyname, 'Timestamp', self.timestamp)
-        redis.hset(self.keyname, 'AccelX', self.accelX)
-        redis.hset(self.keyname, 'AccelY', self.accelY)
-        redis.hset(self.keyname, 'AccelZ', self.accelZ)
-        redis.sadd('keys', self.keyname)
+
+def store_point(point):
+    redis.hmset(point.key, {
+        'ts': point.ts,
+        'x': point.x,
+        'y': point.y,
+        'z': point.z
+    })
+    redis.sadd('keys', point.key)
 
 
 def get_sample_length(csv_fname):
@@ -62,9 +59,8 @@ def create_base_for_processing(csv_fname, debug=False):
 
     for i in range(1, set_len + 1):
         data_back = redis.hmget(csv_fname + str(i), 'Timestamp', 'AccelX', 'AccelZ')
-        dp_obj = accel_datapoint(timestamp=float(data_back[0]), accelX=float(data_back[1]), accelZ=float(data_back[2]), keyname=csv_fname + str(i))
-
-        data.append(dp_obj)
+        p = Point(ts=float(data_back[0]), x=float(data_back[1]), y=0, z=float(data_back[2]), key=csv_fname + str(i))
+        data.append(p)
 
     return data
 
@@ -191,11 +187,11 @@ def downsample(raw_data, downsamplesize=5, avg_method='mean', csv_fname=None):
                 times = raw_data[start + i * dss].timestamp
 
         # Create new ACCELEROMETER DATAPOINT w/ the downsampled data and commit to redis
-        dp_obj = accel_datapoint(timestamp=times, accelX=avgX, accelZ=avgZ, keyname=test_str[0] + ':proc:' + test_str[2] + ':' + test_str[3] + ':' + str(i + 1))
-        dp_obj.submit_to_redis()
+        p = Point(ts=times, x=avgX, y=0, z=avgZ, key=test_str[0] + ':proc:' + test_str[2] + ':' + test_str[3] + ':' + str(i + 1))
+        store_point(p)
 
         # append to output
-        output.append(dp_obj)
+        output.append(p)
 
     return output
 
@@ -222,10 +218,8 @@ def sub_avg(ds_data):
 
     for i in range(0, len(ds_data)):
         test_str = ds_data[i].keyname.split(':')
-        dp_obj = accel_datapoint(timestamp=ds_data[i].timestamp, accelX=ds_data[i].accelX - x_stat[0],
-            accelZ=ds_data[i].accelZ - z_stat[0], keyname=test_str[0] + ':ds-avg:' + test_str[2] + ':' + test_str[3] + ':' + str(i + 1))
-
-        out.append(dp_obj)
+        p = Point(ts=ds_data[i].timestamp, x=ds_data[i].accelX - x_stat[0], y=0, z=ds_data[i].accelZ - z_stat[0], key=test_str[0] + ':ds-avg:' + test_str[2] + ':' + test_str[3] + ':' + str(i + 1))
+        out.append(p)
 
     return [x_stat, z_stat, out]
 
@@ -258,10 +252,10 @@ def step_fnc(ds_avg_dataset, x_stats, z_stats, stddev_w=1.0):
             temp_z = 0.0
 
         test_str = ds_avg_data[i].keyname.split(':')
-        dp_obj = accel_datapoint(timestamp=ds_avg_dataset[i].timestamp, accelX=temp_x, accelZ=temp_z, accelY=abs(temp_x) + abs(temp_z), keyname=test_str[0] + ':step:' + test_str[2] + ':' + test_str[3] + ':' + str(i + 1))
-        dp_obj.submit_to_redis()
+        p = Point(ts=ds_avg_dataset[i].timestamp, x=temp_x, y=abs(temp_x) + abs(temp_z), z=temp_z, key=test_str[0] + ':step:' + test_str[2] + ':' + test_str[3] + ':' + str(i + 1))
+        store_point(p)
 
-        out.append(dp_obj)
+        out.append(p)
 
     return out
 
