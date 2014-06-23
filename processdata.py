@@ -38,9 +38,6 @@ def chunked(l, n):
 
 # Points
 
-WEIGHTS_THREE = [0.75, 1.5, 0.75]
-WEIGHTS_THREE_MH = [0.5, 2, 0.5]
-
 WEIGHTS_FIVE = [5.0 / 9.0, 10.0 / 9.0, 15.0 / 9.0, 10.0 / 9.0, 5.0 / 9.0]
 WEIGHTS_FIVE_MH = [5.0 / 18.0, 15.0 / 18.0, 50.0 / 18.0, 15.0 / 18.0, 5.0 / 18.0]
 
@@ -71,6 +68,30 @@ def wavg(dimension, weights, points):
 
 def avg(dimension, points):
     return wavg(dimension, [1] * len(points), points)
+
+
+def mean(points):
+    return (
+        avg('x', points),
+        avg('y', points),
+        avg('z', points)
+    )
+
+
+def weighted(weights, points):
+    return (
+        wavg('x', weights, points),
+        wavg('y', weights, points),
+        wavg('z', weights, points)
+    )
+
+
+def weighted3(points):
+    return weighted([0.75, 1.5, 0.75], points)
+
+
+def midheavy3(points):
+    return weighted([0.5, 2, 0.5], points)
 
 
 # Pending
