@@ -43,7 +43,8 @@ def create_base_for_processing(RedisObj, csv_fname, debug=False):
     """
     # get the length of this dataset
     set_len = get_sample_length(RedisObj, csv_fname)
-    if debug == True: print 'create_base_for_processing _ set length: %s' % (set_len)
+    if debug:
+        print 'create_base_for_processing _ set length: %s' % (set_len)
 
     test_str = csv_fname.split(':')
 
@@ -307,7 +308,7 @@ def discover_turns(dataset, debug=False):
 
         if dataset[i].accelY == 1.0:
             turn_flag = 1
-            if debug == True:
+            if debug:
                 print "lastzero: %s" % (lastzero)
             i = lastzero
             continue
@@ -327,7 +328,7 @@ def discover_turns(dataset, debug=False):
                 if dataset[i + j].accelY == 0.0:
                     turn_end.append(dataset[i + j].timestamp)
                     break
-                if debug == True:
+                if debug:
                     print "j: %s" % (j)
                 j += 1
 
@@ -335,7 +336,7 @@ def discover_turns(dataset, debug=False):
             turn_flag = 0
             continue
 
-        if debug == True:
+        if debug:
             print "i: %s" % (i)
         i += 1
 
