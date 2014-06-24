@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+    <head>
+        <title>{% block title %}Ege Demirel{% endblock %}</title>
+    </head>
+
+    <body>
+        <h1>This is my Virtual Machine on Microsoft Azure, it seems to be working</h1>
+        <h2>The date and time on this VM is {{ time }} </h2>
+        <p>The cake is indeed a lie!</p>
+        <br><br><br>
+
+        {% block content %}
+        {% endblock %}
+    </body>
+</html>

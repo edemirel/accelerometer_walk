@@ -1,32 +1,33 @@
-from flask import Flask, render_template, request
-import datetime,cgi,os,cgitb,sys,time, logging
+# coding: utf-8
+import logging
+from datetime import datetime
 
-app = Flask(__name__)
-cgitb.enable()
+from flask import Flask, render_template
+
 
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
 
-@app.route("/")
-def landhere():
-	now = datetime.datetime.now()
-	timeString = now.strftime("%Y-%m-%d %H:%M")
-	templateData = {
-	  'title' : 'Ege Demirel',
-	  'time'  : timeString }
 
-	return render_template('main.html',**templateData)
+app = Flask(__name__)
+
+
+@app.context_processor
+def timestamp():
+    return {
+        'time': datetime.now().isoformat()
+    }
+
+
+@app.route("/")
+def index():
+    return render_template('main.html')
+
 
 @app.route("/test")
-def landhere2():
-	now = datetime.datetime.now()
-	timeString = now.strftime("%Y-%m-%d %H:%M")
-	templateData = {
-	  'title' : 'Ege Demirel',
-	  'time'  : timeString }
-
-	return render_template('test.html',**templateData)
+def test():
+    return render_template('test.html')
 
 
 if __name__ == "__main__":
-	app.run(host='0.0.0.0', port=80, debug=True)
+    app.run(host='0.0.0.0', port=80, debug=True)
