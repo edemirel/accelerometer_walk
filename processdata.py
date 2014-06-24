@@ -16,17 +16,18 @@ import requests
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-
 matplotlib.use('Agg')
 
 
 # Connections
 
 redis = StrictRedis(host='localhost', port='6379', db=0)
-neo = neo4j.GraphDatabaseService("http://138.91.93.45:7474/db/data/")
+neo = neo4j.GraphDatabaseService("http://localhost:7474/db/data/")
 
+filename = 'accel:raw:0622:144729'
 
 # Helpers
+
 
 def chunked(l, n):
     """ Yield successive n-sized chunks from l.
@@ -47,6 +48,19 @@ Point = namedtuple('Point', 'x y z ts')
 
 def load_point(key):
     return Point(redis.hgetall(key))
+
+
+def key_string(index, filename=filename, key_type="notdefined"):
+    """
+    key type examples (raw, proc, step)
+    """
+    date = filename.split(":")[2]
+    time = filename.split(":")[3]
+
+    if type(index) is not int:
+        index = str(index)
+
+    return "accel:" + key_type + ":" + date + ":" + time + ":"+index
 
 
 def store_point(key, point):
@@ -158,7 +172,7 @@ def downsample(raw_data, averager, downsamplesize=5, csv_fname=None):
     output = []
     for i, points in enumerate(chunked(raw_data, downsamplesize)):
         mid = points[int(downsamplesize / 2)]
-        key = test_str[0] + ':proc:' + test_str[2] + ':' + test_str[3] + ':' + str(i + 1)
+        key = key_string(i+1, key_type="proc")
         ax, _, az = averager(points)
 
         p = Point(x=ax, y=0, z=az, ts=mid.ts)
@@ -170,61 +184,58 @@ def downsample(raw_data, averager, downsamplesize=5, csv_fname=None):
 
 def sub_avg(ds_data):
     """
-    Get a list of ALREADY DOWNSAMPLED accel_datapoint objects, return the same object with averages taken out of X and Z directions
+    Get a list of ALREADY DOWNSAMPLED accel_datapoint objects, return the same object
+    with averages taken out of X and Z directions.
     This is not submitted to redis as it's an easy function to run
 
     Output is [ [x_avg,x_stddev,x_var], [z_avg,z_stddev,z_var], accel_datapoint list]
     """
     x_list = []
     z_list = []
-    for i in range(0, len(ds_data)):
-        x_list.append(ds_data[i].accelX)
-        z_list.append(ds_data[i].accelZ)
+    for p in ds_data:
+        x_list.append(p.x)
+        z_list.append(p.z)
 
-    x_stat = get_set_stat(x_list)
-    z_stat = get_set_stat(z_list)
+    x_avg, _, _ = get_set_stat(x_list)
+    z_avg, _, _ = get_set_stat(z_list)
 
     out = []
 
-    for i in range(0, len(ds_data)):
-        test_str = ds_data[i].keyname.split(':')
-        p = Point(ts=ds_data[i].timestamp, x=ds_data[i].accelX - x_stat[0], y=0, z=ds_data[i].accelZ - z_stat[0], key=test_str[0] + ':ds-avg:' + test_str[2] + ':' + test_str[3] + ':' + str(i + 1))
+    for i in ds_data:
+        p = Point(ts=p.ts, x=p.x - x_avg, y=0, z=p.z - z_avg)
         out.append(p)
 
-    return [x_stat, z_stat, out]
+    return out
 
 
-def step_fnc(ds_avg_dataset, x_stats, z_stats, stddev_w=1.0):
+def step_fnc(ds_avg_data, x_stats, z_stats, stddev_w=1.0):
     """
     uses basic statistical data to turn the downsamples (avg's taken out) into step functions
     the Y axis is used as a placeholder for the cross correleation
     """
-    length = len(ds_avg_data)
 
     out = []
-    for i in range(0, length):
-        if ds_avg_data[i].accelX < x_stat[0] - stddev_w * x_stat[1]:
+    for data in ds_avg_data:
+        if data.x < x_stats[0] - stddev_w * x_stats[1]:
             temp_x = -0.5
 
-        elif ds_avg_data[i].accelX > x_stat[0] + stddev_w * x_stat[1]:
+        elif data.x > x_stats[0] + stddev_w * x_stats[1]:
             temp_x = 0.5
 
         else:
             temp_x = 0.0
 
-        if ds_avg_data[i].accelZ < x_stat[0] - stddev_w * x_stat[1]:
+        if data.z < z_stats[0] - stddev_w * z_stats[1]:
             temp_z = -0.5
 
-        elif ds_avg_data[i].accelZ > x_stat[0] + stddev_w * x_stat[1]:
+        elif data.z > z_stats[0] + stddev_w * z_stats[1]:
             temp_z = 0.5
 
         else:
             temp_z = 0.0
 
-        test_str = ds_avg_data[i].keyname.split(':')
-        p = Point(ts=ds_avg_dataset[i].timestamp, x=temp_x, y=abs(temp_x) + abs(temp_z), z=temp_z, key=test_str[0] + ':step:' + test_str[2] + ':' + test_str[3] + ':' + str(i + 1))
-        store_point(p)
-
+        p = Point(ts=data.ts, x=temp_x, y=abs(temp_x) + abs(temp_z), z=temp_z)
+        store_point(key_string(i+1, "proc"), p)
         out.append(p)
 
     return out
@@ -323,21 +334,27 @@ def linkdata(turndata):
 
 
 if __name__ == "__main__":
-    speed = 'high'
-    filename = 'accel:raw:0622:144729'
 
     test = create_base_for_processing(filename)
 
     processed_data = downsample(raw_data=test, csv_fname=filename)
 
-    returned = sub_avg(processed_data)
+#   We might run the stat functions twice (one here and one in sub_avg)
+#   but the lists are fairly short
 
-    x_stat = returned[0]
-    z_stat = returned[1]
+    x_list = []
+    z_list = []
+    for p in processed_data:
+        x_list.append(p.x)
+        z_list.append(p.z)
 
-    ds_avg_data = returned[2]
+    x_avg, x_stddev, _ = get_set_stat(x_list)
+    z_avg, z_stddev, _ = get_set_stat(z_list)
 
-    step_out = step_fnc(ds_avg_dataset=ds_avg_data, x_stats=x_stat, z_stats=z_stat, stddev_w=1.5)
+    ds_minus_avg_data = sub_avg(processed_data)
+
+    step_out = step_fnc(ds_avg_dataset=ds_minus_avg_data, x_stats=[x_avg, x_stddev],
+                        z_stats=[z_avg, z_stddev], stddev_w=1.5)
 
     turntest = discover_turns(step_out)
 
